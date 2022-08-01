@@ -17,10 +17,13 @@ import shutil, os
 import pandas as pd
 import xlsxwriter
 import openpyxl
+from openpyxl import load_workbook
+import win32com.client as win32
 
 
 def var(rtg1, rtg2, result, t):  # Function rating deviation
-
+    """ Return the rating variation given player1 rtg, player2 rtg, result and time control,
+     the formula can be found in https://en.wikipedia.org/wiki/Elo_rating_system"""
     k = 0  # Setting K value for classical/rapid/blitz
     if t == 0:
         k = 25
@@ -50,6 +53,7 @@ def var(rtg1, rtg2, result, t):  # Function rating deviation
 
 
 def findplayer(name, size):
+    """ Return the FNX ID, Name and FNX Rtg of player in a vector len 3."""
     # xlsx_file1a = Path('fnxlist', 'rtgfnx.xlsx')
     # wb_obj1a = openpyxl.load_workbook(xlsx_file1a, data_only=True)
     # rtgfnx1a = wb_obj1a.active
@@ -61,6 +65,9 @@ def findplayer(name, size):
 
 
 def findplayerinlist(name, player):
+    """ Return the rating of given player in the tournament list, just don't forget to
+    properly add a player, or it'll be defined as a new FNX chess player"""
+    """ Return zero if the player does not have Rating in the player list"""
     for i in range(0, len(player)):
         if player[i] != 0:
             if player[i][1] == name:
@@ -70,6 +77,7 @@ def findplayerinlist(name, player):
 
 
 def ratingperformance(result, averagertg, perftable):
+    """ Return Rating Performance based in  https://en.wikipedia.org/wiki/Performance_rating_(chess)"""
     if result == 0:
         return round(averagertg - 500, 2)
     if result == 9:
@@ -84,9 +92,12 @@ def ratingperformance(result, averagertg, perftable):
 
 
 def round_off_rating(number):
+    """ Reduces around 0.5 float numbers """
     return round(number * 2) / 2
 
 
+""" The rating performance matrix, defined by FIDE in 
+https://en.wikipedia.org/wiki/Performance_rating_(chess)"""
 pm = np.zeros((4, 8), dtype=float)
 np.set_printoptions(suppress=True)
 pm[0][0] = 0.06
@@ -128,55 +139,75 @@ print("Starting")
 tournamentstest = os.listdir('tournaments')
 # print(tournamentstest)
 for i in range(len(tournamentstest)):
+    """ It's almost impossible to convert .xls to .xlsx"""
+    # Microsoft is making my life harder
+    time.sleep(150)
     if ".xlsx" in tournamentstest[i]:
+        """ Find out the tournament type, if not found set to k = 10 (Please properly rename the files 
+        before uploading"""
+        if ("std" or "standard" or "classical" or "classico" or "clássico" or "pensado") in tournamentstest[i]:
+            kfactor = 0
+        elif ("rpd" or "rapid" or "rapido" or "rápido") in tournamentstest[i]:
+            kfactor = 1
+        else:  # If somewhat the tournament time control is not defined, set as blitz.
+            kfactor = 2
+        print(tournamentstest[i], kfactor)
         # print("true")
-        # Actually to change .xls to .xlsx use https://convertio.co/pt/xls-xlsx/ or something
+        # Change .xls to .xlsx using https://convertio.co/pt/xls-xlsx/ or something
 
+        """ Defining the path of the rtgfnx file which will read and write in."""
         xlsx_file1 = Path('fnxlist', 'rtgfnx.xlsx')
         wb_obj1 = openpyxl.load_workbook(xlsx_file1, data_only=True)
         rtgfnx = wb_obj1.active
-        row_countfnx = int(rtgfnx.max_row)
-        column_countfnx = int(rtgfnx.max_column)
+        row_countfnx = rtgfnx.max_row
+        column_countfnx = rtgfnx.max_column
         maxfnx = 0
         temp11 = 0
 
-        for ia in range(9, row_countfnx + 1):
-            # print(i, rtgfnx["A" + str(i)].value)
-            if rtgfnx["A" + str(ia)].value is None:
-                temp11 = temp11 + 1
-            if not rtgfnx["A" + str(ia)].value is None:
-                temp10 = int(rtgfnx["A" + str(ia)].value)
-                if maxfnx < temp10:
-                    maxfnx = temp10
-        row_countfnx = row_countfnx - temp11
+        """ Just to be sure that the maxfnx ID is updated after every change"""
+        for la in range(9, row_countfnx):
+            temp16 = rtgfnx["A" + str(la)].value
+            if temp16 is not None:
+                # print(temp16, type(temp16))
+                if maxfnx < temp16:
+                    maxfnx = int(temp16)
         print('maxfnx:', maxfnx, row_countfnx)
 
+        """ Defining the path of the tournament file that we r working with"""
         xlsx_file2 = Path('tournaments', tournamentstest[i])
         wb_obj2 = openpyxl.load_workbook(xlsx_file2, data_only=True)
         tournament = wb_obj2.active
-        row_counttournament = int(tournament.max_row)
-        column_counttournament = int(tournament.max_column)
+        row_counttournament = tournament.max_row
+        column_counttournament = tournament.max_column
 
+        """ Making a backup of rtgfnx"""
         shutil.copy(Path('fnxlist', 'rtgfnx.xlsx'), 'backup')
         old_name = Path('backup', 'rtgfnx.xlsx')
         new_name = Path('backup', 'rtgfnx' + str(datetime.now().strftime("%Y_%m_%d_%I_%M_%S_%p")) + '.xlsx')
         os.rename(old_name, new_name)
         players = []
 
+        """ Defining the path of the performance list, actually just a background file"""
+        """ DO NOT EDIT THIS FILE MANUALLY"""
         xlsx_file3 = Path('fnxlist', 'perfrtgfnx.xlsx')
         wb_obj3 = openpyxl.load_workbook(xlsx_file3, data_only=True)
         perfrtgfnx = wb_obj3.active
-        row_countperfrtgfnx = int(perfrtgfnx.max_row)
-        column_countperfrtgfnx = int(perfrtgfnx.max_column)
+        row_countperfrtgfnx = perfrtgfnx.max_row
+        column_countperfrtgfnx = perfrtgfnx.max_column
 
+        """ Making sure that all the files loaded properly"""
+        # Yes I don't want to use subprocess.call
         time.sleep(10)
 
         for j in range(1, row_counttournament):
+            """ Reading the tournament file"""
             # time.sleep(0.5)
+            # print(j, row_countfnx)
             if tournament["E" + str(j)].value == "Name:":
                 # print('\n')
                 temp12 = findplayer(str(tournament["G" + str(j)].value), row_countfnx)
                 # print(temp12, tournament["G" + str(j)].value)
+                """ Verify if the player subscribed in the tournament has FNX Rtg"""
                 if temp12 != 0:
                     # print("True", temp12)
                     players.append(temp12)
@@ -186,16 +217,24 @@ for i in range(len(tournamentstest)):
                     players.append(findplayer(str(tournament["G" + str(j)].value), row_countfnx))
                     rating1 = findplayerinlist(tournament["G" + str(j)].value, players)
                 # print('Rating1:', rating1)
+                """ If the player does not have FNX rating and the player rating 
+                was set manually(Please dont do this), 
+                we save in the players list one of them"""
+
                 for l in range(1, 1000):
                     if tournament["A" + str(j + l)].value == "Rd.":
+                        """ Reading the matchs results of the player"""
                         # print('\n')
                         variation = 0
                         for m in range(1, 20):
+                            # actually the limit is 20 because I don't believe will happen a tournament with this amount of games
                             if tournament["A" + str(j + l + m)].value is None:
+                                # but this line is our safeproof breakrule
                                 break
                             # print(tournament["A" + str(j + l + m)].value, m)
                             rating2 = findplayerinlist(tournament["D" + str(j + l + m)].value, players)
                             if rating1 == 0:
+                                """ Which means player does not have FNX Rtg and need to be registed"""
                                 perfc = 0
                                 score = 0
                                 n1 = 0
@@ -215,39 +254,67 @@ for i in range(len(tournamentstest)):
                                 # print(ratingperformance(score, perfc, pm))
 
                                 # print('size', row_countperfrtgfnx, column_countperfrtgfnx)
-                                test = False
+                                test = False  # Check if player is in performance rating list
                                 for o in range(1, row_countperfrtgfnx):
+                                    """ """
                                     # print("Row Count Fnx Debug: ", row_countfnx)
                                     # print('debug', tournament["G" + str(j)].value, perfrtgfnx["B" + str(o)].value)
                                     if tournament["G" + str(j)].value == str(perfrtgfnx["B" + str(o)].value):
-                                        temp5 = round(float(perfrtgfnx["J" + str(o)].value) + score, 2)
+                                        """ Check if the player is in performance rating list"""
+                                        temp5 = round(float(perfrtgfnx["C" + str(o)].value) + n1, 2)
                                         # print("debug:", perfrtgfnx["J" + str(o)].value, score, temp5)
-                                        if temp5 >= 2:
+                                        if temp5 >= 9:
+                                            """ If the number of rated games, readed in performance rating list, 
+                                            reaches 9 we evaluate his initial rating, erase his data from performance 
+                                            rating list and add in rating fnx list"""
+                                            """ I'm just erasing the cell and not compacting the remaining data, 
+                                            one day i solve that"""
+                                            # print("Debug:", temp5)
                                             # wb2 = openpyxl.load_workbook(xlsx_file1)
                                             # ws2 = wb2.active  # or wb.active
-                                            rtgfnx['A' + str(row_countfnx + 1)] = str(perfrtgfnx["A" + str(o)].value)
-                                            rtgfnx['B' + str(row_countfnx + 1)] = str(perfrtgfnx["B" + str(o)].value)
-                                            rtgfnx['J' + str(row_countfnx + 1)] = ratingperformance(float(
-                                                6 * int(perfrtgfnx["J" + str(o)].value) / (
-                                                    int(perfrtgfnx["C" + str(o)].value))), round(
-                                                int(perfrtgfnx["D" + str(o)].value) / (
-                                                    int(perfrtgfnx["C" + str(o)].value)), 0), pm)
-                                            rtgfnx['CS' + str(row_countfnx + 1)] = 1
-                                            row_countfnx = row_countfnx + 1
-                                            # wb2.save(xlsx_file1)
-                                        perfrtgfnx['C' + str(o)] = perfrtgfnx["C" + str(o)].value + n1
-                                        perfrtgfnx['D' + str(o)] = perfrtgfnx["D" + str(o)].value + perfc
-                                        perfrtgfnx['J' + str(o)] = perfrtgfnx["J" + str(o)].value + score
+                                            temp15 = tournament["G" + str(j)].value
+                                            d = False
+                                            for ia in range(9, row_countfnx + 1):
+                                                if temp15 in str(rtgfnx["B" + str(ia)].value):
+                                                    # print("debug", ia, row_countfnx, rtgfnx["B" + str(ia)].value, temp15)
+                                                    d = True
+                                            if not d:
+                                                # print(o)
+                                                rtgfnx['A' + str(row_countfnx + 1)] = int(
+                                                    perfrtgfnx["A" + str(o)].value)
+                                                rtgfnx['B' + str(row_countfnx + 1)] = str(
+                                                    perfrtgfnx["B" + str(o)].value)
+                                                rtgfnx['J' + str(row_countfnx + 1)] = int(ratingperformance(float(
+                                                    6 * int(perfrtgfnx["J" + str(o)].value) / (
+                                                        int(perfrtgfnx["C" + str(o)].value))), round(
+                                                    int(perfrtgfnx["D" + str(o)].value) / (
+                                                        int(perfrtgfnx["C" + str(o)].value)), 0), pm))
+                                                rtgfnx['CS' + str(row_countfnx + 1)] = 1
+                                                row_countfnx = row_countfnx + 1
+                                                perfrtgfnx['A' + str(o)] = None
+                                                perfrtgfnx['B' + str(o)] = None
+                                                perfrtgfnx['C' + str(o)] = None
+                                                perfrtgfnx['D' + str(o)] = None
+                                                perfrtgfnx['J' + str(o)] = None
+                                                # wb2.save(xlsx_file1)
+                                        else:
+                                            """ And if he didn't reached 9 games, just add the data to 
+                                            performance rating list"""
+                                            perfrtgfnx['C' + str(o)] = perfrtgfnx["C" + str(o)].value + n1
+                                            perfrtgfnx['D' + str(o)] = perfrtgfnx["D" + str(o)].value + perfc
+                                            perfrtgfnx['J' + str(o)] = perfrtgfnx["J" + str(o)].value + score
                                         test = True
                                         break
                                 if not test:
+                                    """ If we didn't find the player in the performance rating list"""
+                                    """ So we add him"""
                                     # print('perfdata')
                                     # print(maxfnx)
                                     # worksheet.write('A3', 'teste')
                                     # workbook.close()
                                     # worksheet.write('D' + str(row_countperfrtgfnx), 'test1')
                                     # print('size', row_countperfrtgfnx, column_countperfrtgfnx)
-                                    perfrtgfnx['A' + str(row_countperfrtgfnx + 1)] = maxfnx + 1
+                                    perfrtgfnx['A' + str(row_countperfrtgfnx + 1)] = int(maxfnx + 1)
                                     maxfnx = maxfnx + 1
                                     perfrtgfnx['B' + str(row_countperfrtgfnx + 1)] = tournament["G" + str(j)].value
                                     temp4 = perfrtgfnx['C' + str(row_countperfrtgfnx + 1)].value
@@ -262,10 +329,12 @@ for i in range(len(tournamentstest)):
                                 # wb.save(xlsx_file3)
                                 break
                             else:
+                                """ The player has FNX RTG and we just evaluate his variation"""
                                 # print("debug:", m, rating1, rating2)
                                 # print(rating1, rating2)
                                 variation = round(
-                                    variation + var(rating1, rating2, tournament["H" + str(j + l + m)].value, 0), 2)
+                                    variation + var(rating1, rating2, tournament["H" + str(j + l + m)].value, 0),
+                                    kfactor)
                                 # wb2 = openpyxl.load_workbook(xlsx_file1)
                                 # ws2 = wb2.active  # or wb.active
 
@@ -273,18 +342,21 @@ for i in range(len(tournamentstest)):
                         temp14 = tournament["G" + str(j)].value
                         # print(temp14, variation)
                         if rating1 != 0:
+                            """ If the player has rating, obviusly is in FNX RTG and we just update his data"""
                             d = 1
                             for ia in range(9, row_countfnx):
                                 if temp14 in str(rtgfnx["B" + str(ia)].value):
                                     d = ia
-                            print(d, row_countfnx, temp14, rtgfnx["J" + str(d)].value, variation)
+                            # print(d, row_countfnx, temp14, rtgfnx["J" + str(d)].value, variation)
                             rtgfnx['J' + str(d)] = round(int(rtgfnx["J" + str(d)].value) + variation, 0)
                             rtgfnx['CS' + str(d)] = int(rtgfnx["CS" + str(d)].value) + 1
                         break
+        """ Saving the files before opening the next tournament file"""
         wb_obj1.save(xlsx_file1)
         wb_obj3.save(xlsx_file3)
         # wb2.save(xlsx_file1)
         print(players)
+        """ Move the tournament file to the 'already readed' folder """
+        shutil.move(xlsx_file2, Path('savedtournaments', tournamentstest[i]))
 
-        # shutil.move(xlsx_file, Path('savedtournaments', tournamentstest[i]))
 print("end")
